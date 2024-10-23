@@ -1,0 +1,140 @@
+lu <- function(X){
+	Xlu = matrix( , nrow=dim(X)[1], ncol=dim(X)[2])
+	for(i in 1:dim(X)[2]){
+		Xlu[,i] = X[,i]/norm(X[,i],"2")	
+	}
+	return(Xlu)
+}
+
+###
+
+NC <- function(X){
+  X = lu(X)
+  XX = crossprod(X)
+  landas = eigen(XX)[[1]]
+  nc = sqrt(max(landas)/min(landas))
+  return(nc)
+}
+
+###
+
+FIV <- function(X){ 
+  fiv=array(0,dim(X)[2])
+  for (i in 1:dim(X)[2]) {
+    reg_aux = lm(X[,i]~X[,-i])
+    #R2 = as.numeric(summary(reg_aux)[8])
+    R2 = summary(reg_aux)[[8]]
+    fiv[i] = 1/(1-R2)
+  }
+  return(fiv)
+}
+
+###
+
+perturb <- function(x, media, dv, tol){
+  p = rnorm(length(x), media, dv)
+  x.p = x + p*tol*(norm(x,"2")/norm(p,"2"))
+  return(x.p)
+}
+
+###
+
+perturb_n.veces = function(datos, n, media, dv, tol){
+  yA = datos[,1]
+  xA = as.matrix(datos[,-1])
+  #
+  regA = lm(yA~xA)
+  summary(regA)
+  betaA = as.double(regA$coefficients)
+  #
+  tols = array(, n)
+  normas = array(, n)
+  for (j in 1:n){
+    xA.p = matrix(, dim(xA)[1], dim(xA)[2])
+    for (i in 1:dim(xA)[2]){
+      xA.p[,i] = perturb(xA[,i], media, dv, tol)
+    }
+    regA.p = lm(yA~xA.p)
+    summary(regA.p)
+    betaA.p = as.double(regA.p$coefficients)
+    #
+    tole = matrix(, 1, dim(xA)[2])
+    for (i in 1:dim(xA)[2]){
+      tole[i] = (norm(xA[,i]-xA.p[,i],"2")/norm(xA[,i],"2"))*100
+    }
+    tols[j] = mean(tole)
+    #
+    normas[j] = (norm(betaA-betaA.p,"2")/norm(betaA,"2"))*100
+  }
+  ##
+  return(cbind(tols,normas))
+}
+
+###
+
+VIFridge <- function(X, start=0, leap=0.1, stop=1)
+{
+	obs = dim(X)[1]
+	vars = dim(X)[2]
+
+	discretizacion = seq(start, stop, leap)
+	identidad = diag(vars)
+	ceros = matrix(0, vars, 1)
+
+	# I standardize the variables
+
+		Xst = matrix( , obs, vars)
+		for (i in 1:vars) {
+			media = mean(X[,i])
+			variance = ((obs-1)/obs)*var(X[,i])
+			for (j in 1:obs) {			
+				Xst[j,i] = (X[j,i] - media)/sqrt(obs*variance)
+			}
+		}
+		
+		XX = crossprod(Xst)
+
+
+	# I apply Theil definition to standardized data
+
+		theil = matrix(, length(discretizacion), vars+1)
+		j = 1
+		for (k in discretizacion)
+		{
+			Ik = sqrt(k)*identidad
+			Xa = rbind(Xst,Ik)
+			theil[j,1] = k
+			for (i in 1:vars)
+			{
+				reg = lm(Xa[,i] ~ Xa[,-i] - 1)
+				R2 = as.numeric(summary(reg)[8])
+				theil[j,i+1] = 1/(1-R2)
+			}
+			j = j+1
+		}
+
+
+	# output
+
+		filas = c()
+		for(k in discretizacion)
+		{
+			filas = c("",filas)
+		}
+		rownames(theil) = filas
+		columnas1 = c()
+		columnas2 = c("k")
+		columnas3 = c(" ")
+		for (i in 1:vars)
+		{
+			columnas1 = c(columnas1, paste("X",i))
+			columnas2 = c(columnas2, paste("X",i))
+		}
+		colnames(theil) = columnas2
+		rownames(XX) = columnas1
+		colnames(XX) = columnas1
+
+		output = list(XX, theil)
+		names(output) = c("Matriz de correlaciones", "VIF in Ridge Regression")
+		output
+}
